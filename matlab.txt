@@ -1,0 +1,109 @@
+%Limpa terminal
+clear;
+clc;
+
+%Realiza conecção com o banco de dados
+datasource = 'url';
+username = 'postgres';
+password = 'root';
+driver = 'org.postgresql.Driver';
+url = 'jdbc:postgresql://localhost:5433/url';
+
+ conn = database(datasource,username,password,driver,url);
+
+pasta = dir('C:\teste'); %diretorio da pasta com as imagens a serem processadas
+u = size(pasta); % pego quantas linhas tem essa pasta
+
+for i=3:u(1)
+    v = pasta(i,1);  %pego a linha que me interessa
+    t= [v.folder,'\',v.name]; %junta diretorio do arquivo e nome do arquivo
+    
+        %Pega um ID no banco de dados
+        selectquery = 'SELECT * FROM caminho'; %procura ultimo id no banco de dados
+        data=select(conn,selectquery);
+        id = data.id;  % converte esse numero para array
+        conta = size(data);
+        
+        verifica=1;
+          %Verifica se o caminho da imagem já esta no banco
+        for y=1:conta
+            if  t == string(data.url_antiga(y,1))
+                disp("Imagem já esta no banco");
+                verifica=0;
+                break;
+            end
+        end
+        
+         %se nao esta no banco, adiciona no banco
+        if verifica == 1
+            
+               selectquery = 'SELECT max(id) FROM caminho'; %procura ultimo id no banco de dados
+               data1=select(conn,selectquery);
+               id=table2array(data1);  % converte esse numero para array
+               
+                % Caso o banco esteja vazio certifico que o id comece em 1
+                if id < 0
+                    id=1
+                else
+                     id=id+1; %senão ,soma +1 para o novo id
+                end
+                
+                try
+                    %FAZ A INSERÇÃO NO BANCO DE DADOS
+                    colnames = {'id','url_antiga','url_nova','flag'};
+                    table='caminho';
+                    dados={id,t,'null','false'};
+                    datainsert(conn,table,colnames,dados);
+                    disp("Imagem adicionada no banco");
+                catch exception
+                    disp('Erro ao adicionar o caminho da imagem no banco');
+                end
+                
+        end
+end
+                
+               try
+                    selectquery = 'SELECT * FROM caminho'; %procura ultimo id no banco de dados
+                    data2=select(conn,selectquery);
+                    id = data2.id;
+                    tam=size(data2);
+               catch exception
+                    disp('Erro ao efetuar um selectpara inserir no banco');
+               end
+               
+          for g=1:tam(1)
+                if data2.flag(g,1)== false % verifica cada linha do banco para pegar as imagens apenas não processadas
+                   
+                        id = string(data2.id(g,1)); % pega o id da imagem não processada
+%                         
+                        b = ['D:\Processadas\'+id+'.jpg']; % diretorio onde será salva a imagem
+                        b = char(b);  % converte pra CHAR
+                        img1 =table2array(data2(g,2)); %num sei mais o que isso ta fazendo aqui,porém não mexe
+%                         img1=string(img1);
+                        img2=char(img1); % converte pra char a variavel acima
+
+                        try
+                            img = imread(img2);  %Aqui deve ser colocado cada nome de imagem a ser dimensionada.
+                            imgCompact = imresize(img, 0.2, 'bicubic'); % Essa função redimensiona a imagem, o "0.2" é a proporção do redimensionamento, que pode ser alterado.
+                            imgCompactSharper = imsharpen(imgCompact);  %aqui é aplicado o filtro de nitidez
+                            imwrite(imgCompactSharper,b,'Quality', 80);
+                        catch exception
+                            disp('Deu ruim no código de processamento');                        
+                        end
+                        
+                        url_nova = b; % pega a url nova
+    
+                        try
+                            id = string(data2.id(g,1)); % pego o id que me interessa
+                            id=char(id); % tranformo ele em char
+                            colnames={'url_nova', 'flag'};
+                            data = {url_nova,'true'};
+                            whereclause = ['WHERE id =',id];
+                            update(conn,'caminho',colnames,data,whereclause); 
+                        catch exception
+                            disp('Erro no momento de atualizar campos da imagem no banco');
+                        end
+                end
+          end
+%Fecha Conecção
+ close(conn);
